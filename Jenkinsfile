@@ -52,7 +52,7 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artefacts: 'staging_results.txt', fingerprint: true, onlyIfSuccessful: false
+                    archiveArtifacts artifacts: 'staging_results.txt', fingerprint: true, onlyIfSuccessful: false
                 }
             }
         }
@@ -80,7 +80,7 @@ pipeline {
             }
             post {
                 always {
-                    archiveArtifacts artefacts: 'prod_results.txt', fingerprint: true
+                    archiveArtifacts artifacts: 'prod_results.txt', fingerprint: true
                 }
             }
         }
