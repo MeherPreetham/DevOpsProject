@@ -8,13 +8,7 @@ pipeline {
     }
 
     stages {
-        stage('Pull Code') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Install Dependencies') {
+        stage('Build & Image') {
             agent {
                 docker { 
                     image 'node:18-alpine' 
@@ -23,44 +17,71 @@ pipeline {
             }
             steps {
                 sh 'npm ci'
-            }
-        }
-
-        stage('Build & Test Image') {
-            // We use the Docker-in-Docker sidecar approach here
-            agent {
-                docker {
-                    image 'docker:latest'
-                    args "-u root -v /var/run/docker.sock:/var/run/docker.sock"
-                    reuseNode true
+                sh 'npm run build'
+                script {
+                    sh "docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} ."
                 }
             }
-            steps {
-                sh "docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} ."
-            }
         }
 
-        stage('Push to Docker Hub') {
-            agent {
-                docker {
-                    image 'docker:latest'
-                    args "-u root -v /var/run/docker.sock:/var/run/docker.sock"
-                    reuseNode true
+        stage('Docker Image Push') {
+            steps {
+                script {
+                    sh "echo \$DOCKERHUB_CREDENTIALS_PSW | docker login -u \$DOCKERHUB_CREDENTIALS_USR --password-stdin"
+                    sh "docker push ${IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    sh "docker tag ${IMAGE_NAME}:${env.BUILD_NUMBER} ${IMAGE_NAME}:latest"
+                    sh "docker push ${IMAGE_NAME}:latest"
                 }
             }
+        }
+
+        stage('Staging Test') {
             steps {
-                sh "echo \$DOCKERHUB_CREDENTIALS_PSW | docker login -u \$DOCKERHUB_CREDENTIALS_USR --password-stdin"
-                sh "docker push ${IMAGE_NAME}:${env.BUILD_NUMBER}"
-                sh "docker tag ${IMAGE_NAME}:${env.BUILD_NUMBER} ${IMAGE_NAME}:latest"
-                sh "docker push ${IMAGE_NAME}:latest"
+                script {
+                    // Start a temporary staging container
+                    sh "docker run -d --name staging-app -p 3001:3000 ${IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    
+                    // Run a test and pipe output to a file
+                    sh "echo 'Running Staging Tests...' > staging_results.txt"
+                    sh "curl -s http://localhost:3001 || echo 'App failed to respond' >> staging_results.txt"
+                    sh "docker ps | grep staging-app >> staging_results.txt"
+                    
+                    // Clean up staging
+                    sh "docker stop staging-app && docker rm staging-app"
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artefacts: 'staging_results.txt', fingerprint: true, onlyIfSuccessful: false
+                }
             }
         }
 
-        stage('Deploy') {
-            // Back to the host agent to swap the live container
+        stage('Approval') {
+            steps {
+                input message: "Does the staging test look good? Deploy to Production?", ok: "Deploy"
+            }
+        }
+
+        stage('Production Deploy') {
             steps {
                 sh "docker stop my-live-app || true && docker rm my-live-app || true"
                 sh "docker run -d --network devops-net -p 80:3000 --name my-live-app ${IMAGE_NAME}:latest"
+            }
+        }
+
+        stage('Post-Prod Test') {
+            steps {
+                script {
+                    sh "echo 'Running Post-Production Health Check...' > prod_results.txt"
+                    sh "curl -s http://localhost:80 || echo 'Production App Down!' >> prod_results.txt"
+                    sh "docker inspect my-live-app --format '{{.State.Status}}' >> prod_results.txt"
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artefacts: 'prod_results.txt', fingerprint: true
+                }
             }
         }
     }
