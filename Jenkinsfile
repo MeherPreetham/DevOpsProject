@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKER_USER = 'iron5pi3dr11' 
         IMAGE_NAME = "${DOCKER_USER}/devops-app"
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
+        DOCKERHUB_CREDENTIALS = credentials('docker-creds')
     }
 
     stages {
