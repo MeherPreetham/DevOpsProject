@@ -20,10 +20,6 @@ pipeline {
                 sh 'npm run build'
                 script {
                     sh '''
-                          echo "WHOAMI=$(whoami)"
-                          echo "KERNEL=$(uname -a)"
-                          echo "DOCKER=$(which docker || echo missing)"
-                          ls -l /var/run/docker.sock || true
                           docker build -t ${IMAGE_NAME}:${env.BUILD_NUMBER} .
                         '''
                 }
