@@ -1,6 +1,5 @@
 pipeline {
     agent any
-
     environment {
         DOCKER_USER = 'iron5pi3dr11'
         IMAGE_NAME = "${DOCKER_USER}/devops-app"
@@ -14,15 +13,17 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Installing Dependencies') {
             agent {
-                docker { 
-                    image 'node:18-alpine' 
-                    reuseNode true 
+                docker {
+                    image 'node:18-alpine'
+                    reuseNode true
                 }
             }
             steps {
-                sh 'npm install'
+                sh '''
+                    npm ci
+                '''
             }
         }
 
